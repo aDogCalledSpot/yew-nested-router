@@ -1,14 +1,16 @@
 use crate::router::RouterContext;
 use crate::target::{Mapper, Target};
+use gloo_history::query::ToQuery;
 use yew::prelude::*;
+use super::router::ChangeTargetArgs;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScopeContext<C>
 where
     C: Target,
 {
-    pub(crate) upwards: Callback<C>,
-    pub(crate) collect: Callback<C, String>,
+    pub(crate) upwards: Callback<ChangeTargetArgs<C>>,
+    pub(crate) collect: Callback<ChangeTargetArgs<C>, String>,
 }
 
 impl<C> ScopeContext<C>
@@ -16,10 +18,17 @@ where
     C: Target,
 {
     pub(crate) fn push(&self, target: C) {
-        self.upwards.emit(target);
+        self.upwards.emit(ChangeTargetArgs { target, query: None });
     }
 
-    pub(crate) fn collect(&self, target: C) -> String {
+    pub(crate) fn push_with_query<Q: ToQuery>(&self, target: C, query: Q) -> Result<(), Q::Error> {
+        let query = query.to_query()?;
+        let query = Some(query.into_owned());
+        self.upwards.emit(ChangeTargetArgs { target, query });
+        Ok(())
+    }
+
+    pub(crate) fn collect(&self, target: ChangeTargetArgs<C>) -> String {
         self.collect.emit(target)
     }
 }
@@ -56,14 +65,14 @@ where
             upwards: {
                 let parent = parent.upwards.clone();
                 let upwards = upwards.clone();
-                Callback::from(move |child: C| {
+                Callback::from(move |child: ChangeTargetArgs<C>| {
                     parent.emit(upwards.emit(child));
                 })
             },
             collect: {
                 let parent = parent.collect.clone();
                 let upwards = upwards.clone();
-                Callback::from(move |child: C| parent.emit(upwards.emit(child)))
+                Callback::from(move |child: ChangeTargetArgs<C>| parent.emit(upwards.emit(child)))
             },
         }
     });

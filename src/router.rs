@@ -1,10 +1,12 @@
 use crate::base;
 use crate::scope::ScopeContext;
 use crate::target::Target;
-use gloo_history::{AnyHistory, BrowserHistory, History, HistoryListener, Location};
+use gloo_history::query::ToQuery;
+use gloo_history::{AnyHistory, BrowserHistory, History, HistoryListener, Location, HistoryError};
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::rc::Rc;
+use std::collections::HashMap;
 use yew::prelude::*;
 
 #[derive(Clone, PartialEq)]
@@ -28,10 +30,16 @@ where
         self.scope.push(target);
     }
 
+    /// Like `[Self::push]` but also pushes query arguments along with it. Uses `serde` to serialize
+    /// the query arguments.
+    pub fn push_with_query<Q: ToQuery>(&self, target: T, query: Q) -> Result<(), Q::Error> {
+        self.scope.push_with_query(target, query)
+    }
+
     /// Render the path of target.
     ///
     /// This includes the parenting scopes as well as the "base" URL of the document.
-    pub fn render_target(&self, target: T) -> String {
+    pub fn render_target(&self, target: ChangeTargetArgs<T>) -> String {
         self.scope.collect(target)
     }
 
@@ -117,8 +125,20 @@ where
 #[doc(hidden)]
 pub enum Msg<T: Target> {
     RouteChanged(Location),
-    ChangeTarget(T),
+    ChangeTarget(ChangeTargetArgs<T>),
 }
+
+pub trait Query: ToQuery<Error = HistoryError> + Clone {}
+
+#[derive(Clone, Debug, PartialEq)]
+pub  struct ChangeTargetArgs<C>
+where
+    C: Target,
+{
+    pub target: C,
+    pub query: Option<String>,
+}
+
 
 /// Top-level router component.
 pub struct Router<T: Target> {
@@ -191,7 +211,7 @@ where
                 // log::debug!("Pushing state: {:?}", request.path);
                 let route = Self::render_target(&self.base, &target);
                 // log::debug!("Push URL: {route}");
-                self.history.push(route);
+                self.history.push_with_query(route, target.query).unwrap();
             }
         }
 
@@ -218,16 +238,22 @@ where
 }
 
 impl<T: Target> Router<T> {
-    fn render_target(base: &str, target: &T) -> String {
+    fn render_target(base: &str, target: &ChangeTargetArgs<T>) -> String {
+        let query = match target.query {
+            None => String::new(),
+            Some(map) => map.to_query().unwrap().to_string(),
+        };
         format!(
-            "{}/{}",
+            "{}/{}{}",
             base,
             target
+                .target
                 .render_path()
                 .into_iter()
                 .map(|segment| urlencoding::encode(&segment).to_string())
                 .collect::<Vec<_>>()
-                .join("/")
+                .join("/"),
+            query
         )
     }
 

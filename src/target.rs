@@ -3,6 +3,8 @@
 use std::fmt::Debug;
 use yew::Callback;
 
+use crate::prelude::ChangeTargetArgs;
+
 /// A target for used by a router.
 pub trait Target: Clone + Debug + Eq + 'static {
     /// Render only our path segment.
@@ -33,11 +35,11 @@ pub trait Target: Clone + Debug + Eq + 'static {
 
 /// Maps a `P`arent target onto a `C`hild target and vice versa.
 #[derive(Debug, PartialEq)]
-pub struct Mapper<P, C> {
+pub struct Mapper<P: Target, C: Target> {
     /// Obtain the child target from the parent
     pub downwards: Callback<P, Option<C>>,
     /// Obtain the parent target from the child
-    pub upwards: Callback<C, P>,
+    pub upwards: Callback<ChangeTargetArgs<C>, ChangeTargetArgs<P>>,
 }
 
 impl<P, C> Clone for Mapper<P, C>
@@ -61,7 +63,7 @@ where
     pub fn new<PF, CF>(downwards: PF, upwards: CF) -> Self
     where
         PF: Fn(P) -> Option<C> + 'static,
-        CF: Fn(C) -> P + 'static,
+        CF: Fn(ChangeTargetArgs<C>) -> ChangeTargetArgs<P> + 'static,
     {
         Self {
             downwards: downwards.into(),
@@ -72,7 +74,7 @@ where
     pub fn new_callback<PF, CF>(downwards: PF, upwards: CF) -> Callback<(), Self>
     where
         PF: Fn(P) -> Option<C> + 'static,
-        CF: Fn(C) -> P + 'static,
+        CF: Fn(ChangeTargetArgs<C>) -> ChangeTargetArgs<P> + 'static,
     {
         Self::new(downwards, upwards).into()
     }
@@ -93,7 +95,7 @@ where
     P: Target,
     C: Target,
     PF: Fn(P) -> Option<C> + 'static,
-    CF: Fn(C) -> P + 'static,
+    CF: Fn(ChangeTargetArgs<C>) -> ChangeTargetArgs<P> + 'static,
 {
     fn from((down, up): (PF, CF)) -> Self {
         Self::new(down, up)

@@ -1,19 +1,24 @@
-use crate::prelude::{use_router, Target};
+use crate::prelude::{use_router, Target, ChangeTargetArgs};
 use gloo_events::{EventListener, EventListenerOptions};
+use gloo_history::query::ToQuery;
 use web_sys::HtmlElement;
 use yew::prelude::*;
 
 /// Properties for the [`Link`] component.
 #[derive(Clone, Debug, PartialEq, Properties)]
-pub struct LinkProps<T>
+pub struct LinkProps<T, Q>
 where
     T: Target,
+    Q: ToQuery + PartialEq  + Clone,
 {
     /// It's children, rendered inside the element.
     pub children: Children,
 
     /// The link target.
     pub target: T,
+
+    #[prop_or_default]
+    pub query:  Option<Q>,
 
     #[prop_or_default]
     pub any: bool,
@@ -50,11 +55,13 @@ mod default {
 
 /// A link component, navigating to a [`Target`] on the `onclick` event.
 #[function_component(Link)]
-pub fn link<T>(props: &LinkProps<T>) -> Html
+pub fn link<T, Q>(props: &LinkProps<T, Q>) -> Html
 where
     T: Target + 'static,
+    Q: ToQuery + PartialEq + Clone,
 {
     let router = use_router::<T>().expect("Need Router or Nested component");
+    let target =  ChangeTargetArgs { target: props.target.clone(), query: props.query.clone() };
 
     let mut class = props.class.clone();
 
@@ -69,7 +76,7 @@ where
                 .clone()
                 .map(|t| predicate.emit(t))
                 .unwrap_or(false),
-            None => router.is_same(&props.target),
+            None => router.is_same(&target.target),
         },
     };
 
@@ -79,27 +86,28 @@ where
     }
 
     let href = match props.element.as_str() {
-        "a" if !props.suppress_href => Some(router.render_target(props.target.clone())),
+        "a" if !props.suppress_href => Some(router.render_target(target.clone())),
         _ => None,
     };
 
     let node_ref = use_node_ref();
 
     use_effect_with(
-        (router, props.target.clone(), node_ref.clone()),
-        |(router, target, node_ref)| {
+        (router, props.target.clone(), props.query.clone(), node_ref.clone()),
+        |(router, target, query, node_ref)| {
             let mut listener = None;
 
             if let Some(element) = node_ref.cast::<HtmlElement>() {
                 let router = router.clone();
                 let target = target.clone();
+                let query = query.clone();
                 listener = Some(EventListener::new_with_options(
                     &element,
                     "click",
                     EventListenerOptions::enable_prevent_default(),
                     move |e| {
                         e.prevent_default();
-                        router.push(target.clone());
+                        router.push_with_query(target.clone(), query.clone()).unwrap();
                     },
                 ));
             }
